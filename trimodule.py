@@ -172,13 +172,16 @@ class TrigramMaxEnt(TrigramModelWithTopK):
             char0 = text[i]
             char1 = text[i+1]
             char2 = text[i+2]
-
-            samples_X.append(np.concatenate([self.vectorize(char0, self.features), self.vectorize(char1, self.features)]))
-            samples_y.append(self.model.classes_.index(char2))
+            
+            if char2 in list(self.model.classes_):
+                samples_X.append(np.concatenate([self.vectorize(char0, self.features), self.vectorize(char1, self.features)]))
+                samples_y.append(list(self.model.classes_).index(char2))
 
         predictions = self.model.predict_log_proba(samples_X)
         logprobs = [x[0][x[1]] for x in zip(predictions, samples_y)]
-        
+        print(logprobs[0], logprobs[1])
+        logprobs = np.array(logprobs)
+        return np.power(2, -1/(len(logprobs)) * np.sum(logprobs))
 
 class TrigramMaxEntExpandSamples(TrigramMaxEnt):
     def process_samples(self, instances):
@@ -196,3 +199,23 @@ class TrigramMaxEntExpandSamples(TrigramMaxEnt):
             real_weights += [1] * multiplier
 
         return (real_X, real_y, real_weights)
+
+import torch
+from torch import optim
+from torch import nn
+
+class TrigramPredictNN(nn.Module):
+    def __init__(self, input_size, output_size, hidden_size=10):
+        self.linear0 = nn.Linear(input_size, hidden_size)
+        self.sigmoid = nn.Sigmoid()
+        self.linear1 = nn.Linear(hidden_size, output_size)
+        
+    def forward(self, x):
+        m = self.linear0(x)
+        n = self.sigmoid(m)
+        o = self.linear1(n)
+        
+        return o
+
+class TrigramFFNN(TrigramMaxEnt):
+    pass
