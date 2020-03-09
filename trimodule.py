@@ -126,6 +126,9 @@ class TrigramMaxEnt(TrigramModelWithTopK):
         empty[features.index(feature)] = 1
         
         return empty
+
+    def make_model(self, vector_width=None):
+        self.model = LogisticRegression()
     
     def __init__(self, inputstring):
         super().__init__(inputstring)
@@ -135,6 +138,7 @@ class TrigramMaxEnt(TrigramModelWithTopK):
         for x in self.tridict.keys():
             self.features.add(x)
         self.features = list(self.features)
+        self.make_model(len(self.features))
 
     def process_samples(self, instances):
         X = [x[0] for x in instances]
@@ -152,9 +156,12 @@ class TrigramMaxEnt(TrigramModelWithTopK):
             
             instances.append((np.concatenate([char1inst, char2inst]), s[2], s[3]))
             
-        X, y, sample_weights = self.process_samples(instances)
-        
-        self.model.fit(X, y, sample_weights)
+        inputs = self.process_samples(instances)
+
+        self.call_model(inputs)
+
+    def call_model(self, inputs):
+        self.model.fit(inputs[0], inputs[1], inputs[2])
         
     def get_choices(self, inputchar0, inputchar1):
         inputvec = np.concatenate([self.vectorize(inputchar0, self.features), self.vectorize(inputchar1, self.features)])
@@ -206,6 +213,7 @@ from torch import nn
 
 class TrigramPredictNN(nn.Module):
     def __init__(self, input_size, output_size, hidden_size=10):
+        super().__init__()
         self.linear0 = nn.Linear(input_size, hidden_size)
         self.sigmoid = nn.Sigmoid()
         self.linear1 = nn.Linear(hidden_size, output_size)
@@ -218,4 +226,22 @@ class TrigramPredictNN(nn.Module):
         return o
 
 class TrigramFFNN(TrigramMaxEnt):
-    pass
+    def make_model(self, vector_size=None):
+        self.model = TrigramPredictNN(vector_size, vector_size)
+
+    def call_model(self, inputs):
+        """
+        The training loop.
+        """
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.SGD(self.model.parameters(), lr=0.01)
+        for i in range(len(inputs[0])):
+            instance = torch.Tensor(inputs[0][i])
+            label = inputs[1][i]
+
+            output = self.model(instance)
+
+            loss = criterion(output, label)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
