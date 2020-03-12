@@ -132,7 +132,7 @@ class TrigramMaxEnt(TrigramModelWithTopK):
     
     def __init__(self, inputstring):
         super().__init__(inputstring)
-        self.model = LogisticRegression()
+        #self.model = LogisticRegression()
         
         self.features = set()
         for x in self.tridict.keys():
@@ -227,7 +227,7 @@ class TrigramPredictNN(nn.Module):
 
 class TrigramFFNN(TrigramMaxEnt):
     def make_model(self, vector_size=None):
-        self.model = TrigramPredictNN(vector_size, vector_size)
+        self.model = TrigramPredictNN(vector_size * 2, vector_size)
 
     def call_model(self, inputs):
         """
@@ -236,9 +236,11 @@ class TrigramFFNN(TrigramMaxEnt):
         criterion = nn.CrossEntropyLoss()
         optimizer = optim.SGD(self.model.parameters(), lr=0.01)
         for i in range(len(inputs[0])):
-            instance = torch.Tensor(inputs[0][i])
-            label = inputs[1][i]
-
+            instance = torch.Tensor([inputs[0][i]])
+            print(instance, instance.size())
+            label = torch.LongTensor(self.features.index(inputs[1][i]))
+            print(label, label.size())
+            
             output = self.model(instance)
 
             loss = criterion(output, label)
