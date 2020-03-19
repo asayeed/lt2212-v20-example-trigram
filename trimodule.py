@@ -162,15 +162,21 @@ class TrigramMaxEnt(TrigramModelWithTopK):
 
     def call_model(self, inputs):
         self.model.fit(inputs[0], inputs[1], inputs[2])
-        
+
+    def get_predictions_from_model(self, inputvec):
+        return self.model.predict_log_proba([inputvec])
+
+    def get_features(self):
+        return self.model.classes_
+    
     def get_choices(self, inputchar0, inputchar1):
         inputvec = np.concatenate([self.vectorize(inputchar0, self.features), self.vectorize(inputchar1, self.features)])
         
-        predictions = self.model.predict_log_proba([inputvec])
+        predictions = self.get_predictions_from_model(inputvec)
         #print(-predictions, len(-predictions))
         sortedargs = np.argsort(-predictions[0])
         #print(sortedargs, len(sortedargs))
-        return [self.model.classes_[x] for x in sortedargs]
+        return [self.get_features()[x] for x in sortedargs]
 
     def perplexity(self, text):
         samples_X = []
@@ -229,6 +235,9 @@ class TrigramFFNN(TrigramMaxEnt):
     def make_model(self, vector_size=None):
         self.model = TrigramPredictNN(vector_size * 2, vector_size)
 
+    def eval(self):
+        self.model.eval()
+        
     def call_model(self, inputs):
         """
         The training loop.
@@ -237,9 +246,13 @@ class TrigramFFNN(TrigramMaxEnt):
         optimizer = optim.SGD(self.model.parameters(), lr=0.01)
         for i in range(len(inputs[0])):
             instance = torch.Tensor([inputs[0][i]])
-            print(instance, instance.size())
-            label = torch.LongTensor(self.features.index(inputs[1][i]))
-            print(label, label.size())
+            #print(instance, instance.size())
+            #print(inputs[1])
+            #print(self.features)
+            #print(inputs[1][i])
+            #print(self.features.index(inputs[1][i]))
+            label = torch.LongTensor([self.features.index(inputs[1][i])])
+            #print(label, label.size())
             
             output = self.model(instance)
 
@@ -247,3 +260,11 @@ class TrigramFFNN(TrigramMaxEnt):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+
+    def get_predictions_from_model(self, inputvec):
+        torchvec = torch.Tensor([inputvec])
+        output = self.model(torchvec)
+        return torch.log_softmax(output, 1).detach().numpy()
+
+    def get_features(self):
+        return self.features
