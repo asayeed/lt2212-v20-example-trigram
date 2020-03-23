@@ -166,6 +166,9 @@ class TrigramMaxEnt(TrigramModelWithTopK):
     def get_predictions_from_model(self, inputvec):
         return self.model.predict_log_proba([inputvec])
 
+    def get_multiple_predictions_from_model(self, inputvec):
+        return self.model.predict_log_proba(inputvec)
+    
     def get_features(self):
         return self.model.classes_
     
@@ -186,13 +189,16 @@ class TrigramMaxEnt(TrigramModelWithTopK):
             char1 = text[i+1]
             char2 = text[i+2]
             
-            if char2 in list(self.model.classes_):
+            if char2 in list(self.get_features()):
                 samples_X.append(np.concatenate([self.vectorize(char0, self.features), self.vectorize(char1, self.features)]))
-                samples_y.append(list(self.model.classes_).index(char2))
+                samples_y.append(list(self.get_features()).index(char2))
 
-        predictions = self.model.predict_log_proba(samples_X)
+        #print(samples_X[:2])
+        predictions = self.get_multiple_predictions_from_model(samples_X)
+        #print(predictions)
         logprobs = [x[0][x[1]] for x in zip(predictions, samples_y)]
-        print(logprobs[0], logprobs[1])
+        #print(logprobs)
+        #print(logprobs[0], logprobs[1])
         logprobs = np.array(logprobs)
         return np.power(2, -1/(len(logprobs)) * np.sum(logprobs))
 
@@ -216,6 +222,7 @@ class TrigramMaxEntExpandSamples(TrigramMaxEnt):
 import torch
 from torch import optim
 from torch import nn
+import random
 
 class TrigramPredictNN(nn.Module):
     def __init__(self, input_size, output_size, hidden_size=10):
@@ -232,9 +239,14 @@ class TrigramPredictNN(nn.Module):
         return o
 
 class TrigramFFNN(TrigramMaxEnt):
+    def __init__(self, inputstring, k=5, epochs=3, lr=0.01):
+        super().__init__(inputstring)
+        self.epochs = epochs
+        self.lr = lr
+        
     def make_model(self, vector_size=None):
         self.model = TrigramPredictNN(vector_size * 2, vector_size)
-
+        
     def eval(self):
         self.model.eval()
         
@@ -243,28 +255,37 @@ class TrigramFFNN(TrigramMaxEnt):
         The training loop.
         """
         criterion = nn.CrossEntropyLoss()
-        optimizer = optim.SGD(self.model.parameters(), lr=0.01)
-        for i in range(len(inputs[0])):
-            instance = torch.Tensor([inputs[0][i]])
-            #print(instance, instance.size())
-            #print(inputs[1])
-            #print(self.features)
-            #print(inputs[1][i])
-            #print(self.features.index(inputs[1][i]))
-            label = torch.LongTensor([self.features.index(inputs[1][i])])
-            #print(label, label.size())
-            
-            output = self.model(instance)
+        optimizer = optim.SGD(self.model.parameters(), lr=self.lr)
+        for z in range(self.epochs):
+            print("Running epoch {}...".format(z))
+            for i in range(len(inputs[0])):
+                instance = torch.Tensor([inputs[0][i]])
+                label = torch.LongTensor([self.features.index(inputs[1][i])])
+                         
+                output = self.model(instance)
 
-            loss = criterion(output, label)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+                loss = criterion(output, label)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+            newinputs = list(zip(inputs[0],inputs[1]))
+            random.shuffle(newinputs)
+            i0 = [x[0] for x in newinputs]
+            i1 = [x[1] for x in newinputs]
+            inputs = (i0,i1)
 
     def get_predictions_from_model(self, inputvec):
         torchvec = torch.Tensor([inputvec])
         output = self.model(torchvec)
+        
         return torch.log_softmax(output, 1).detach().numpy()
+
+    def get_multiple_predictions_from_model(self, inputvec):
+        return self.get_predictions_from_model(inputvec)[0]
+
+    #print(result.shape)
+        #return result
 
     def get_features(self):
         return self.features
